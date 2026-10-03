@@ -9,7 +9,7 @@ Background: [Image quality labels](https://vishalbakshi.com/blog/posts/2026-10-0
 1. Upload images. Everything runs in the browser and nothing is uploaded to a server. Five images works well.
 2. Each image is shown as the clean original followed by five glare strengths, from weakest to strongest, with no labels.
 3. The rater gives each image a 1–5 score. Decimals are allowed, and so are scores below 1 or above 5.
-4. On submit, the tool takes the median score for each level across all images. It fits an increasing curve from log glare strength to score (isotonic regression over every round so far) and picks the strengths where that curve crosses 1, 2, 3, 4 and 5. All images are then re-rendered at the new strengths.
+4. On submit, the tool takes the median score for each level across all images. It fits an increasing curve from log glare strength to score (isotonic regression over every round so far) and picks the strengths where that curve crosses 1, 2, 3, 4 and 5. If even the strongest image tested isn't a 5, or the faintest isn't a 1, the next round goes past it: 1.5× to 3× further for each missing score point. All images are then re-rendered at the new strengths.
 5. Rounds repeat until every level's median is within 0.25 of its target. **Export JSON** saves the strengths, the fitted curve, the glare settings and every score.
 
 Clicking an original image moves the glare center for that image. Clicking a glare image enlarges it, and you can enter its score there.

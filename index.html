@@ -378,11 +378,14 @@ const INITIAL_STRENGTHS = [0.2, 0.4, 0.6, 0.8, 1.0];
 const MAX_SIDE = 768;           // images are downscaled so the longest side is at most this
 const MAX_SETS = 25;
 const DONE_TOLERANCE = 0.25;    // every level's median within this of its target
-const MIN_STEP_RATIO = 1.08;    // each level at least 8% stronger than the one before
-const S_MIN = 0.01;
-const S_MAX = 12;
-const MAX_JUMP = Math.log(3);   // extrapolation moves at most 3x past the data per round
-const DEFAULT_SLOPE = 1 / Math.LN2; // used when there is no slope yet: doubling strength adds 1 point
+const MIN_STEP_RATIO = 1.2;     // each level at least 20% stronger than the one before
+const S_MIN = 0.001;
+const S_MAX = 1000;             // at this strength the glare washes out the whole image
+// Past the ends of the data, each missing score point moves strength by 1.5x to 3x,
+// starting from the strongest (or weakest) strength tested so far.
+const MIN_STEP = Math.log(1.5);
+const MAX_STEP = Math.log(3);
+const DEFAULT_STEP = Math.LN2;  // used when there is no slope yet: doubling strength adds 1 point
 const STORAGE_KEY = 'glare-calibration:v1';
 
 const GLARE_MODEL = {
@@ -652,7 +655,8 @@ function isotonic(ys, ws) {
   return out;
 }
 
-// Increasing curve from log(strength) to score, as knots that rise in both coordinates.
+// Increasing step-and-ramp curve from log(strength) to score. Each knot is a flat run of
+// strengths that got the same fitted score, from uLo to uHi, with straight ramps between knots.
 function fitCurve(points) {
   const merged = new Map();
   for (const p of points) {
@@ -667,38 +671,40 @@ function fitCurve(points) {
   const knots = [];
   rows.forEach((r, i) => {
     const last = knots[knots.length - 1];
-    if (last && Math.abs(last.y - fitted[i]) < 1e-9) {
-      last.u = (last.u * last.w + r.u * r.w) / (last.w + r.w);
-      last.w += r.w;
-    } else {
-      knots.push({ u: r.u, y: fitted[i], w: r.w });
-    }
+    if (last && Math.abs(last.y - fitted[i]) < 1e-9) last.uHi = r.u;
+    else knots.push({ uLo: r.u, uHi: r.u, y: fitted[i] });
   });
-  return knots;
+  return knots.map((k) => ({ ...k, uMid: (k.uLo + k.uHi) / 2 }));
 }
 
-function extrapolationSlope(knots) {
-  if (knots.length < 2) return DEFAULT_SLOPE;
+// Change in log(strength) per score point, used past the ends of the data.
+function extrapolationStep(knots) {
+  if (knots.length < 2) return DEFAULT_STEP;
   const a = knots[0];
   const b = knots[knots.length - 1];
-  const slope = (b.y - a.y) / (b.u - a.u);
-  return Number.isFinite(slope) && slope > 0 ? slope : DEFAULT_SLOPE;
+  const step = (b.uMid - a.uMid) / (b.y - a.y);
+  return clamp(Number.isFinite(step) ? step : DEFAULT_STEP, MIN_STEP, MAX_STEP);
 }
 
-function strengthFor(target, knots, slope) {
+function strengthFor(target, knots, step) {
+  const eps = 1e-9;
   const first = knots[0];
   const last = knots[knots.length - 1];
-  if (target <= first.y) return Math.exp(first.u + clamp((target - first.y) / slope, -MAX_JUMP, 0));
-  if (target >= last.y) return Math.exp(last.u + clamp((target - last.y) / slope, 0, MAX_JUMP));
+  // Beyond the data: start from the weakest or strongest strength tested, not the run's middle.
+  if (target < first.y - eps) return Math.exp(first.uLo - (first.y - target) * step);
+  if (target > last.y + eps) return Math.exp(last.uHi + (target - last.y) * step);
+  for (const k of knots) {
+    if (Math.abs(target - k.y) <= eps) return Math.exp(k.uMid);
+  }
   for (let k = 0; k < knots.length - 1; k++) {
     const a = knots[k];
     const b = knots[k + 1];
-    if (target >= a.y && target <= b.y) {
+    if (target > a.y && target < b.y) {
       const f = (target - a.y) / (b.y - a.y);
-      return Math.exp(a.u + f * (b.u - a.u));
+      return Math.exp(a.uHi + f * (b.uLo - a.uHi));
     }
   }
-  return Math.exp(last.u);
+  return Math.exp(last.uHi);
 }
 
 function enforceOrder(strengths) {
@@ -713,8 +719,15 @@ function enforceOrder(strengths) {
 
 function nextStrengths() {
   const knots = fitCurve(fitPoints());
-  const slope = extrapolationSlope(knots);
-  return enforceOrder(TARGETS.map((t) => strengthFor(t, knots, slope)));
+  const step = extrapolationStep(knots);
+  return enforceOrder(TARGETS.map((t) => strengthFor(t, knots, step)));
+}
+
+// The curve as (strength, score) vertices, for drawing and export.
+function curveVertices(knots) {
+  return knots.flatMap((k) => (k.uHi > k.uLo
+    ? [{ s: Math.exp(k.uLo), y: k.y }, { s: Math.exp(k.uHi), y: k.y }]
+    : [{ s: Math.exp(k.uLo), y: k.y }]));
 }
 
 // ---------- Building the sets UI ----------
@@ -937,7 +950,7 @@ function renderChart() {
     root.append(t);
   }
   root.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: 'axis' }));
-  const candidates = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20];
+  const candidates = [0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
   for (const c of candidates.filter((c) => c >= lo && c <= hi)) {
     root.append(svgEl('line', { x1: xs(c), x2: xs(c), y1: H - m.b, y2: H - m.b + 4, class: 'axis' }));
     const t = svgEl('text', { x: xs(c), y: H - m.b + 17, class: 'tick', 'text-anchor': 'middle' });
@@ -952,8 +965,9 @@ function renderChart() {
   yTitle.textContent = 'Your score';
   root.append(xTitle, yTitle);
 
-  if (knots.length > 1) {
-    const d = knots.map((k, j) => `${j ? 'L' : 'M'}${xs(Math.exp(k.u)).toFixed(1)},${ys(k.y).toFixed(1)}`).join('');
+  const vertices = curveVertices(knots);
+  if (vertices.length > 1) {
+    const d = vertices.map((v, j) => `${j ? 'L' : 'M'}${xs(v.s).toFixed(1)},${ys(v.y).toFixed(1)}`).join('');
     root.append(svgEl('path', { d, class: 'fit' }));
   }
 
@@ -1032,7 +1046,7 @@ function exportJson() {
     calibrated: state.calibrated,
     strengths: state.strengths,
     glareModel: { ...GLARE_MODEL, renderMaxSide: MAX_SIDE },
-    fittedCurve: knots.map((k) => ({ strength: Number(Math.exp(k.u).toPrecision(4)), score: round(k.y, 3) })),
+    fittedCurve: curveVertices(knots).map((v) => ({ strength: Number(v.s.toPrecision(4)), score: round(v.y, 3) })),
     sets: sets.map((s) => ({
       key: s.key, name: s.name, width: s.w, height: s.h, seed: s.seed, shape: s.shape, center: s.center,
     })),
@@ -1193,6 +1207,12 @@ function init() {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => { if (!$('#results').hidden) renderChart(); }, 150);
   });
+
+  // Strengths follow from the saved rounds, so recomputing them lets fitting fixes reach sessions in progress.
+  if (state.rounds.length && !state.calibrated) {
+    state.strengths = nextStrengths();
+    saveState();
+  }
 
   if (state.rounds.length) {
     const resume = $('#resume');
