@@ -1,0 +1,1208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glare Calibration</title>
+<meta name="description" content="Calibrate synthetic glare levels against your own 1–5 severity scale.">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --surface-2: #f0efec;
+    --border: #dddbd5;
+    --text: #1a1a19;
+    --text-2: #52514e;
+    --text-3: #75736e;
+    --accent: #2a78d6;
+    --accent-text: #ffffff;
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --grid: #e8e6e1;
+    --good: #0ca30c;
+    --good-bg: #eaf6ea;
+    --danger: #d03b3b;
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #121211;
+      --surface: #1a1a19;
+      --surface-2: #252523;
+      --border: #383835;
+      --text: #ffffff;
+      --text-2: #c3c2b7;
+      --text-3: #9a998f;
+      --accent: #3987e5;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --grid: #2c2c2a;
+      --good-bg: #142a16;
+      --shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #121211;
+    --surface: #1a1a19;
+    --surface-2: #252523;
+    --border: #383835;
+    --text: #ffffff;
+    --text-2: #c3c2b7;
+    --text-3: #9a998f;
+    --accent: #3987e5;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --grid: #2c2c2a;
+    --good-bg: #142a16;
+    --shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 1280px; margin: 0 auto; padding: 28px 16px 24px; }
+  h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.15rem; margin: 0 0 4px; }
+  h3 { font-size: 1rem; margin: 0; }
+  p { margin: 0 0 8px; }
+  .lede { color: var(--text-2); max-width: 70ch; margin-bottom: 20px; }
+  .muted { color: var(--text-2); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  [hidden] { display: none !important; }
+
+  button {
+    font: inherit;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    padding: 7px 14px;
+    cursor: pointer;
+  }
+  button:hover { background: var(--surface-2); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+  button.primary:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+  button:focus-visible, input:focus-visible, canvas:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  /* Upload */
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    padding: 40px 16px;
+    text-align: center;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .dropzone.dragging { border-color: var(--accent); background: var(--surface-2); }
+  .dropzone p { margin: 10px auto 0; max-width: 60ch; }
+  .dropzone .resume { color: var(--text); font-weight: 600; }
+  .error { color: var(--danger); }
+
+  /* Instructions */
+  .instructions { margin-bottom: 16px; }
+  .instructions strong { display: block; font-size: 1.05rem; margin-bottom: 4px; }
+  .instructions p { max-width: 80ch; }
+  .instructions .hint { color: var(--text-2); margin: 0; }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 12px;
+  }
+  .toolbar .round-label { font-weight: 600; font-size: 1.05rem; }
+  .toolbar .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  .banner {
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+    border: 1px solid var(--good);
+    background: var(--good-bg);
+  }
+  .banner strong { display: block; }
+
+  /* Sets */
+  .set { margin-bottom: 14px; }
+  .set-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 10px; min-width: 0; }
+  .set-name {
+    color: var(--text-3);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+  @media (max-width: 760px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 420px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .tile { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .canvas-wrap {
+    position: relative;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--surface-2);
+    line-height: 0;
+  }
+  .tile canvas { display: block; width: 100%; height: auto; cursor: zoom-in; }
+  .tile-orig canvas { cursor: crosshair; }
+  .marker {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    margin: -8px 0 0 -8px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+    pointer-events: none;
+  }
+  .tile figcaption { font-size: 0.8rem; color: var(--text-2); line-height: 1.3; text-align: center; }
+  .tile figcaption small { display: block; color: var(--text-3); font-size: 0.75rem; }
+  .score {
+    width: 100%;
+    padding: 6px 8px;
+    font: inherit;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .score.invalid { border-color: var(--danger); }
+
+  .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 14px 0;
+    margin-bottom: 8px;
+    background: linear-gradient(to bottom, transparent, var(--bg) 35%);
+  }
+  .actions .count { color: var(--text-2); }
+  #status { min-height: 1.5em; color: var(--text-2); margin-bottom: 24px; }
+
+  /* Results */
+  .results { margin-top: 8px; }
+  .results-head { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .results-head p { max-width: 75ch; color: var(--text-2); margin: 0; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.85rem; color: var(--text-2); margin-bottom: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .key-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--series-1); }
+  .key-line { width: 18px; height: 2px; border-radius: 1px; background: var(--series-2); }
+  .key-ring { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--text-2); }
+  #chart { position: relative; width: 100%; min-height: 40px; }
+  #chart svg { display: block; overflow: visible; }
+  #chart .grid { stroke: var(--grid); stroke-width: 1; }
+  #chart .axis { stroke: var(--text-3); stroke-width: 1; }
+  #chart .tick { fill: var(--text-3); font-size: 11px; }
+  #chart .axis-title { fill: var(--text-2); font-size: 12px; }
+  #chart .fit { fill: none; stroke: var(--series-2); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  #chart .pt { fill: var(--series-1); stroke: var(--surface); stroke-width: 2; }
+  #chart .pt.old { opacity: 0.35; }
+  #chart .next { fill: var(--surface); stroke: var(--text-2); stroke-width: 2; }
+  #chart .hit { fill: transparent; cursor: pointer; outline: none; }
+  #chart .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+  .tip {
+    position: absolute;
+    pointer-events: none;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    box-shadow: var(--shadow);
+    transform: translate(-50%, calc(-100% - 12px));
+    white-space: nowrap;
+    color: var(--text-2);
+  }
+  .tip strong { color: var(--text); font-size: 0.95rem; display: block; }
+  .table-wrap { overflow-x: auto; margin-top: 16px; }
+  table { border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; width: 100%; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { color: var(--text-2); font-weight: 600; }
+  td .s { color: var(--text-3); }
+  tr.next-row td { color: var(--text-2); font-style: italic; }
+
+  footer { color: var(--text-3); font-size: 0.8rem; padding: 24px 0 8px; }
+  footer a { color: inherit; }
+
+  /* Lightbox */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(8, 8, 8, 0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px;
+  }
+  .lightbox figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 10px; min-width: 0; }
+  #lb-canvas { display: block; max-width: min(88vw, 1400px); max-height: 76vh; width: auto; height: auto; border-radius: 6px; }
+  .lightbox figcaption { color: #eee; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  .lightbox .score { width: 90px; background: #1a1a19; color: #fff; border-color: #555; }
+  .lightbox button { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.25); font-size: 1.3rem; line-height: 1; padding: 10px 14px; }
+  .lightbox button:hover { background: rgba(255, 255, 255, 0.2); }
+  .lb-close { position: absolute; top: 12px; right: 12px; }
+  @media (max-width: 600px) {
+    .lightbox { padding: 56px 8px 16px; }
+    .lb-prev, .lb-next { position: absolute; bottom: 16px; }
+    .lb-prev { left: 16px; }
+    .lb-next { right: 16px; }
+    #lb-canvas { max-width: 94vw; max-height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Glare calibration</h1>
+    <p class="lede">Adds synthetic glare to your images at five strengths and adjusts the strengths until they match your own sense of severity 1 through 5. Images stay in your browser.</p>
+  </header>
+
+  <section id="upload" class="dropzone" aria-label="Upload images">
+    <button class="primary" id="choose" type="button">Choose images</button>
+    <input id="file" type="file" accept="image/*" multiple hidden>
+    <p class="muted">or drop them here. Five images works well. Each one becomes a set of five glare levels.</p>
+    <p class="resume" id="resume" hidden></p>
+    <p class="error" id="upload-error" role="alert" hidden></p>
+  </section>
+
+  <section id="workspace" hidden>
+    <div class="banner" id="done-banner" role="status" hidden>
+      <strong>Calibrated.</strong>
+      <span id="done-text"></span>
+    </div>
+
+    <div class="card instructions">
+      <strong id="instructions-title">The glare in these images isn't calibrated yet.</strong>
+      <p>Score each image's glare from 1 (mildest) to 5 (worst), using whatever 1–5 means to you. Decimals are fine. After you submit, the glare is adjusted and you score again. You're done when your scores come out 1, 2, 3, 4, 5.</p>
+      <p class="hint">The ends can move too. If the faintest image doesn't deserve a 1, or the strongest doesn't deserve a 5, score them lower or higher than that.</p>
+    </div>
+
+    <div class="toolbar">
+      <span class="round-label" id="round-label">Round 1</span>
+      <div class="buttons">
+        <button type="button" id="change-images">Change images</button>
+        <button type="button" id="reset">Start over</button>
+      </div>
+    </div>
+
+    <div id="sets"></div>
+
+    <div class="actions">
+      <span class="count" id="count"></span>
+      <button type="button" class="primary" id="submit" disabled>Submit scores</button>
+    </div>
+    <p id="status" role="status" aria-live="polite"></p>
+  </section>
+
+  <section id="results" class="card results" hidden>
+    <div class="results-head">
+      <div>
+        <h2>Your scale so far</h2>
+        <p>Each dot is the median of your scores for one level in one round. The next round uses the strengths where the fitted curve crosses 1, 2, 3, 4 and 5.</p>
+      </div>
+      <button type="button" id="export">Export JSON</button>
+    </div>
+    <div class="legend">
+      <span><i class="key-dot"></i>Your median score (faded = earlier rounds)</span>
+      <span><i class="key-line"></i>Fitted curve</span>
+      <span id="legend-next"><i class="key-ring"></i>Strengths for the next round</span>
+    </div>
+    <div id="chart"></div>
+    <div class="table-wrap">
+      <table id="history"></table>
+    </div>
+  </section>
+
+  <footer>
+    Background: <a href="https://vishalbakshi.com/blog/posts/2026-10-02-image-quality-labels/">Image quality labels</a>
+    · <a href="https://github.com/vishalbakshi/image-quality-calibration">Source</a>
+  </footer>
+</main>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged image" hidden>
+  <button type="button" class="lb-close" id="lb-close" aria-label="Close">✕</button>
+  <button type="button" class="lb-prev" id="lb-prev" aria-label="Previous image">‹</button>
+  <figure>
+    <canvas id="lb-canvas"></canvas>
+    <figcaption>
+      <span id="lb-caption"></span>
+      <input id="lb-score" class="score" type="number" inputmode="decimal" step="0.1" min="0" placeholder="score" aria-label="Score for this image">
+    </figcaption>
+  </figure>
+  <button type="button" class="lb-next" id="lb-next" aria-label="Next image">›</button>
+</div>
+
+<script>
+'use strict';
+
+// ---------- Settings ----------
+
+const LEVELS = 5;
+const TARGETS = [1, 2, 3, 4, 5];
+const INITIAL_STRENGTHS = [0.2, 0.4, 0.6, 0.8, 1.0];
+const MAX_SIDE = 768;           // images are downscaled so the longest side is at most this
+const MAX_SETS = 25;
+const DONE_TOLERANCE = 0.25;    // every level's median within this of its target
+const MIN_STEP_RATIO = 1.08;    // each level at least 8% stronger than the one before
+const S_MIN = 0.01;
+const S_MAX = 12;
+const MAX_JUMP = Math.log(3);   // extrapolation moves at most 3x past the data per round
+const DEFAULT_SLOPE = 1 / Math.LN2; // used when there is no slope yet: doubling strength adds 1 point
+const STORAGE_KEY = 'glare-calibration:v1';
+
+const GLARE_MODEL = {
+  name: 'radial-glare-linear-light',
+  version: 1,
+  description: 'Adds light in linear RGB, saturating at white: out = L + a * (1 - L), a = min(1, strength * G). ' +
+    'G is an elliptical Gaussian core plus a wider, weaker halo, centered per image.',
+  coreSigma: 0.06,  // fraction of the image diagonal, times a per-image coreScale
+  haloSigma: 0.22,  // fraction of the image diagonal
+  haloWeight: 0.35,
+};
+
+// ---------- Color conversion ----------
+
+const SRGB_TO_LINEAR = new Float32Array(256);
+for (let i = 0; i < 256; i++) {
+  const c = i / 255;
+  SRGB_TO_LINEAR[i] = c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+const LUT_N = 16384;
+const LINEAR_TO_SRGB = new Uint8ClampedArray(LUT_N + 1);
+for (let i = 0; i <= LUT_N; i++) {
+  const l = i / LUT_N;
+  const c = l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
+  LINEAR_TO_SRGB[i] = Math.round(c * 255);
+}
+
+// ---------- Seeded randomness ----------
+
+function hashString(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------- State ----------
+
+function freshState() {
+  return {
+    version: 1,
+    strengths: INITIAL_STRENGTHS.slice(),
+    rounds: [],
+    centers: {},
+    calibrated: false,
+  };
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return freshState();
+    const saved = JSON.parse(raw);
+    if (saved?.version !== 1 || !Array.isArray(saved.strengths) || saved.strengths.length !== LEVELS) {
+      return freshState();
+    }
+    return { ...freshState(), ...saved };
+  } catch {
+    return freshState();
+  }
+}
+
+function saveState() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage can be unavailable (private windows, blocked site data). The page still works.
+  }
+}
+
+let state = loadState();
+let sets = [];
+
+// ---------- Small helpers ----------
+
+const $ = (sel) => document.querySelector(sel);
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else node.setAttribute(k, v);
+  }
+  for (const child of children) node.append(child);
+  return node;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  return node;
+}
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const round = (v, digits) => Number(v.toFixed(digits));
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+function median(values) {
+  const s = values.slice().sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+
+function fmtStrength(s) {
+  return String(Number(s.toPrecision(s < 1 ? 2 : 3)));
+}
+
+function fmtScore(v) {
+  return String(round(v, 2));
+}
+
+// ---------- Images and glare ----------
+
+async function decodeImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = url;
+    await img.decode();
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#fff'; // flatten transparency onto white
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return ctx.getImageData(0, 0, w, h);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function makeSet(file) {
+  const original = await decodeImage(file);
+  const key = `${file.name}:${file.size}`;
+  const seed = hashString(key);
+  const rand = mulberry32(seed);
+  const shape = {
+    aspect: round(0.55 + 0.45 * rand(), 4),
+    angle: round(Math.PI * rand(), 4),
+    coreScale: round(0.8 + 0.45 * rand(), 4),
+  };
+  const defaultCenter = [round(0.25 + 0.5 * rand(), 3), round(0.25 + 0.5 * rand(), 3)];
+  return {
+    key,
+    name: file.name,
+    seed,
+    shape,
+    defaultCenter,
+    center: state.centers[key] ? state.centers[key].slice() : defaultCenter.slice(),
+    original,
+    w: original.width,
+    h: original.height,
+    field: null,
+    canvases: [],
+    inputs: [],
+    marker: null,
+  };
+}
+
+// Glare intensity at each pixel, before multiplying by strength.
+function computeField(set) {
+  const { w, h, shape, center } = set;
+  const diag = Math.hypot(w, h);
+  const coreSigma = GLARE_MODEL.coreSigma * diag * shape.coreScale;
+  const haloSigma = GLARE_MODEL.haloSigma * diag;
+  const kCore = -0.5 / (coreSigma * coreSigma);
+  const kHalo = -0.5 / (haloSigma * haloSigma);
+  const cos = Math.cos(shape.angle);
+  const sin = Math.sin(shape.angle);
+  const cx = center[0] * w;
+  const cy = center[1] * h;
+  const field = new Float32Array(w * h);
+  let i = 0;
+  for (let y = 0; y < h; y++) {
+    const dy = y + 0.5 - cy;
+    for (let x = 0; x < w; x++, i++) {
+      const dx = x + 0.5 - cx;
+      const u = dx * cos + dy * sin;
+      const v = (-dx * sin + dy * cos) / shape.aspect;
+      const d2 = u * u + v * v;
+      field[i] = Math.exp(d2 * kCore) + GLARE_MODEL.haloWeight * Math.exp(d2 * kHalo);
+    }
+  }
+  return field;
+}
+
+function renderLevel(set, strength, canvas) {
+  const { w, h, field } = set;
+  const src = set.original.data;
+  const out = new ImageData(w, h);
+  const dst = out.data;
+  for (let i = 0, p = 0; i < field.length; i++, p += 4) {
+    let a = strength * field[i];
+    if (a > 1) a = 1;
+    for (let c = 0; c < 3; c++) {
+      const l = SRGB_TO_LINEAR[src[p + c]];
+      dst[p + c] = LINEAR_TO_SRGB[((l + a * (1 - l)) * LUT_N + 0.5) | 0];
+    }
+    dst[p + 3] = 255;
+  }
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext('2d').putImageData(out, 0, 0);
+}
+
+function renderSet(set) {
+  if (!set.field) set.field = computeField(set);
+  const orig = set.canvases[0];
+  orig.width = set.w;
+  orig.height = set.h;
+  orig.getContext('2d').putImageData(set.original, 0, 0);
+  for (let i = 0; i < LEVELS; i++) renderLevel(set, state.strengths[i], set.canvases[i + 1]);
+  set.marker.style.left = `${set.center[0] * 100}%`;
+  set.marker.style.top = `${set.center[1] * 100}%`;
+}
+
+async function renderAllSets() {
+  for (const set of sets) {
+    renderSet(set);
+    await nextFrame();
+  }
+}
+
+// ---------- Fitting ----------
+
+// Points: one per level per round, the median score at that strength.
+function fitPoints() {
+  const points = [];
+  for (const r of state.rounds) {
+    r.strengths.forEach((s, i) => points.push({ s, y: r.medians[i], w: r.sets.length }));
+  }
+  return points;
+}
+
+// Weighted pool-adjacent-violators: the closest non-decreasing fit.
+function isotonic(ys, ws) {
+  const blocks = [];
+  for (let i = 0; i < ys.length; i++) {
+    blocks.push({ v: ys[i], w: ws[i], n: 1 });
+    while (blocks.length > 1 && blocks[blocks.length - 2].v > blocks[blocks.length - 1].v) {
+      const b = blocks.pop();
+      const a = blocks.pop();
+      const w = a.w + b.w;
+      blocks.push({ v: (a.v * a.w + b.v * b.w) / w, w, n: a.n + b.n });
+    }
+  }
+  const out = [];
+  for (const b of blocks) for (let k = 0; k < b.n; k++) out.push(b.v);
+  return out;
+}
+
+// Increasing curve from log(strength) to score, as knots that rise in both coordinates.
+function fitCurve(points) {
+  const merged = new Map();
+  for (const p of points) {
+    const key = p.s.toPrecision(6);
+    const m = merged.get(key) || { u: Math.log(p.s), sy: 0, w: 0 };
+    m.sy += p.y * p.w;
+    m.w += p.w;
+    merged.set(key, m);
+  }
+  const rows = [...merged.values()].sort((a, b) => a.u - b.u);
+  const fitted = isotonic(rows.map((r) => r.sy / r.w), rows.map((r) => r.w));
+  const knots = [];
+  rows.forEach((r, i) => {
+    const last = knots[knots.length - 1];
+    if (last && Math.abs(last.y - fitted[i]) < 1e-9) {
+      last.u = (last.u * last.w + r.u * r.w) / (last.w + r.w);
+      last.w += r.w;
+    } else {
+      knots.push({ u: r.u, y: fitted[i], w: r.w });
+    }
+  });
+  return knots;
+}
+
+function extrapolationSlope(knots) {
+  if (knots.length < 2) return DEFAULT_SLOPE;
+  const a = knots[0];
+  const b = knots[knots.length - 1];
+  const slope = (b.y - a.y) / (b.u - a.u);
+  return Number.isFinite(slope) && slope > 0 ? slope : DEFAULT_SLOPE;
+}
+
+function strengthFor(target, knots, slope) {
+  const first = knots[0];
+  const last = knots[knots.length - 1];
+  if (target <= first.y) return Math.exp(first.u + clamp((target - first.y) / slope, -MAX_JUMP, 0));
+  if (target >= last.y) return Math.exp(last.u + clamp((target - last.y) / slope, 0, MAX_JUMP));
+  for (let k = 0; k < knots.length - 1; k++) {
+    const a = knots[k];
+    const b = knots[k + 1];
+    if (target >= a.y && target <= b.y) {
+      const f = (target - a.y) / (b.y - a.y);
+      return Math.exp(a.u + f * (b.u - a.u));
+    }
+  }
+  return Math.exp(last.u);
+}
+
+function enforceOrder(strengths) {
+  const s = strengths.map((v) => clamp(v, S_MIN, S_MAX));
+  for (let i = 1; i < s.length; i++) s[i] = Math.max(s[i], s[i - 1] * MIN_STEP_RATIO);
+  if (s[s.length - 1] > S_MAX) {
+    s[s.length - 1] = S_MAX;
+    for (let i = s.length - 2; i >= 0; i--) s[i] = Math.min(s[i], s[i + 1] / MIN_STEP_RATIO);
+  }
+  return s.map((v) => Number(v.toPrecision(4)));
+}
+
+function nextStrengths() {
+  const knots = fitCurve(fitPoints());
+  const slope = extrapolationSlope(knots);
+  return enforceOrder(TARGETS.map((t) => strengthFor(t, knots, slope)));
+}
+
+// ---------- Building the sets UI ----------
+
+function buildSets() {
+  const container = $('#sets');
+  container.replaceChildren();
+  sets.forEach((set, si) => {
+    const tiles = el('div', { class: 'tiles' });
+
+    const origCanvas = el('canvas', {
+      'aria-label': `Set ${si + 1} original without glare. Click to move the glare center.`,
+    });
+    const marker = el('span', { class: 'marker' });
+    origCanvas.addEventListener('click', (e) => moveGlare(set, e));
+    tiles.append(
+      el('figure', { class: 'tile tile-orig' },
+        el('div', { class: 'canvas-wrap' }, origCanvas, marker),
+        el('figcaption', {}, 'Original', el('small', {}, 'Click to move the glare'))),
+    );
+
+    set.canvases = [origCanvas];
+    set.inputs = [];
+    set.marker = marker;
+
+    for (let i = 0; i < LEVELS; i++) {
+      const canvas = el('canvas', {
+        tabindex: '0',
+        role: 'button',
+        'aria-label': `Enlarge set ${si + 1}, image ${i + 1}`,
+      });
+      canvas.addEventListener('click', () => openLightbox(si, i + 1));
+      canvas.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openLightbox(si, i + 1);
+        }
+      });
+      const input = el('input', {
+        class: 'score',
+        type: 'number',
+        inputmode: 'decimal',
+        step: '0.1',
+        min: '0',
+        placeholder: 'score',
+        'aria-label': `Score for set ${si + 1}, image ${i + 1}`,
+      });
+      input.addEventListener('input', () => {
+        input.classList.remove('invalid');
+        updateCount();
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          focusNextInput(input);
+        }
+      });
+      set.canvases.push(canvas);
+      set.inputs.push(input);
+      tiles.append(el('figure', { class: 'tile' }, el('div', { class: 'canvas-wrap' }, canvas), input));
+    }
+
+    container.append(
+      el('section', { class: 'card set', 'aria-label': `Set ${si + 1}` },
+        el('div', { class: 'set-head' },
+          el('h3', {}, `Set ${si + 1}`),
+          el('span', { class: 'set-name', title: set.name }, set.name)),
+        tiles),
+    );
+  });
+}
+
+function allInputs() {
+  return sets.flatMap((s) => s.inputs);
+}
+
+function focusNextInput(input) {
+  const inputs = allInputs();
+  const next = inputs[inputs.indexOf(input) + 1];
+  if (next) next.focus();
+  else $('#submit').focus();
+}
+
+function parseScore(str) {
+  if (str.trim() === '') return null;
+  const v = Number(str);
+  return Number.isFinite(v) && v >= 0 && v <= 100 ? v : null;
+}
+
+function updateCount() {
+  const inputs = allInputs();
+  const filled = inputs.filter((inp) => parseScore(inp.value) !== null).length;
+  $('#count').textContent = `${filled} of ${inputs.length} scored`;
+  $('#submit').disabled = filled !== inputs.length || inputs.length === 0;
+}
+
+function moveGlare(set, event) {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const fx = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+  const fy = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+  set.center = [round(fx, 3), round(fy, 3)];
+  state.centers[set.key] = set.center.slice();
+  saveState();
+  set.field = null;
+  set.inputs.forEach((inp) => { inp.value = ''; });
+  renderSet(set);
+  updateCount();
+}
+
+// ---------- Rounds ----------
+
+function submitRound() {
+  let ok = true;
+  const scores = sets.map((set) => set.inputs.map((inp) => {
+    const v = parseScore(inp.value);
+    inp.classList.toggle('invalid', v === null);
+    if (v === null) ok = false;
+    return v;
+  }));
+  if (!ok) {
+    $('#status').textContent = 'Some scores are missing or not numbers between 0 and 100.';
+    return;
+  }
+
+  const medians = TARGETS.map((_, i) => median(scores.map((row) => row[i])));
+  state.rounds.push({
+    round: state.rounds.length + 1,
+    at: new Date().toISOString(),
+    strengths: state.strengths.slice(),
+    medians: medians.map((m) => round(m, 3)),
+    sets: sets.map((set, k) => ({
+      key: set.key,
+      name: set.name,
+      center: set.center.slice(),
+      scores: scores[k],
+    })),
+  });
+
+  const worstGap = Math.max(...medians.map((m, i) => Math.abs(m - TARGETS[i])));
+  state.calibrated = worstGap <= DONE_TOLERANCE;
+  if (!state.calibrated) state.strengths = nextStrengths();
+  saveState();
+
+  allInputs().forEach((inp) => { inp.value = ''; });
+  updateCount();
+  renderAllSets();
+  renderStatus(worstGap);
+  renderResults();
+  $('#workspace').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function renderStatus(worstGap) {
+  const n = state.rounds.length;
+  $('#round-label').textContent = `Round ${n + 1}`;
+  const banner = $('#done-banner');
+  $('#instructions-title').textContent = state.calibrated
+    ? 'The glare matches your last scores.'
+    : "The glare in these images isn't calibrated yet.";
+  if (state.calibrated && n > 0) {
+    banner.hidden = false;
+    $('#done-text').textContent =
+      `After ${n} round${n === 1 ? '' : 's'}, every level's median score was within ${DONE_TOLERANCE} of 1, 2, 3, 4, 5. ` +
+      `Your strengths are ${state.strengths.map(fmtStrength).join(', ')}. Score another round to double-check, or export the results.`;
+  } else {
+    banner.hidden = true;
+  }
+  if (worstGap !== undefined) {
+    $('#status').textContent = state.calibrated
+      ? `Round ${n} saved. The glare is unchanged.`
+      : `Round ${n} saved. The furthest level was ${fmtScore(worstGap)} away from its target, so the glare has been adjusted. Score the new images.`;
+  }
+}
+
+// ---------- Results: chart and table ----------
+
+function renderResults() {
+  const has = state.rounds.length > 0;
+  $('#results').hidden = !has;
+  if (!has) return;
+  $('#legend-next').hidden = state.calibrated;
+  renderChart();
+  renderHistory();
+}
+
+function renderChart() {
+  const wrap = $('#chart');
+  wrap.replaceChildren();
+  if (!state.rounds.length) return;
+
+  const W = Math.max(300, Math.floor(wrap.clientWidth || 640));
+  const H = 300;
+  const m = { l: 48, r: 16, t: 14, b: 46 };
+
+  const latest = state.rounds.length - 1;
+  const points = [];
+  state.rounds.forEach((r, ri) => r.strengths.forEach((s, i) => points.push({
+    kind: 'score', s, y: r.medians[i], ri, i, perSet: r.sets.map((x) => x.scores[i]),
+  })));
+  const next = state.calibrated ? [] : state.strengths.map((s, i) => ({ kind: 'next', s, y: TARGETS[i], i }));
+  const knots = fitCurve(fitPoints());
+
+  const all = points.concat(next);
+  const lo = Math.min(...all.map((p) => p.s)) / 1.35;
+  const hi = Math.max(...all.map((p) => p.s)) * 1.35;
+  const yMax = Math.max(5.5, Math.ceil(Math.max(...points.map((p) => p.y)) + 0.5));
+  const L0 = Math.log(lo);
+  const L1 = Math.log(hi);
+  const xs = (s) => m.l + ((Math.log(s) - L0) / (L1 - L0)) * (W - m.l - m.r);
+  const ys = (v) => H - m.b - (v / yMax) * (H - m.t - m.b);
+
+  const root = svgEl('svg', {
+    viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img',
+    'aria-label': 'Your median score plotted against glare strength',
+  });
+
+  for (let v = 0; v <= Math.floor(yMax); v++) {
+    root.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: ys(v), y2: ys(v), class: 'grid' }));
+    const t = svgEl('text', { x: m.l - 8, y: ys(v), class: 'tick', 'text-anchor': 'end', 'dominant-baseline': 'middle' });
+    t.textContent = v;
+    root.append(t);
+  }
+  root.append(svgEl('line', { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, class: 'axis' }));
+  const candidates = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20];
+  for (const c of candidates.filter((c) => c >= lo && c <= hi)) {
+    root.append(svgEl('line', { x1: xs(c), x2: xs(c), y1: H - m.b, y2: H - m.b + 4, class: 'axis' }));
+    const t = svgEl('text', { x: xs(c), y: H - m.b + 17, class: 'tick', 'text-anchor': 'middle' });
+    t.textContent = String(c);
+    root.append(t);
+  }
+  const xTitle = svgEl('text', { x: m.l + (W - m.l - m.r) / 2, y: H - 6, class: 'axis-title', 'text-anchor': 'middle' });
+  xTitle.textContent = 'Glare strength (log scale)';
+  const yTitle = svgEl('text', {
+    x: -(m.t + (H - m.t - m.b) / 2), y: 14, class: 'axis-title', 'text-anchor': 'middle', transform: 'rotate(-90)',
+  });
+  yTitle.textContent = 'Your score';
+  root.append(xTitle, yTitle);
+
+  if (knots.length > 1) {
+    const d = knots.map((k, j) => `${j ? 'L' : 'M'}${xs(Math.exp(k.u)).toFixed(1)},${ys(k.y).toFixed(1)}`).join('');
+    root.append(svgEl('path', { d, class: 'fit' }));
+  }
+
+  for (const p of points.filter((p) => p.ri !== latest)) {
+    root.append(svgEl('circle', { cx: xs(p.s), cy: ys(p.y), r: 4.5, class: 'pt old' }));
+  }
+  for (const p of points.filter((p) => p.ri === latest)) {
+    root.append(svgEl('circle', { cx: xs(p.s), cy: ys(p.y), r: 4.5, class: 'pt' }));
+  }
+  for (const p of next) {
+    root.append(svgEl('circle', { cx: xs(p.s), cy: ys(p.y), r: 5, class: 'next' }));
+  }
+
+  const tip = el('div', { class: 'tip', role: 'tooltip' });
+  tip.hidden = true;
+  const show = (p) => {
+    const title = el('strong');
+    const lines = [];
+    if (p.kind === 'score') {
+      title.textContent = `Score ${fmtScore(p.y)}`;
+      lines.push(`Round ${p.ri + 1}, level ${p.i + 1}`, `Strength ${fmtStrength(p.s)}`,
+        `Per set: ${p.perSet.map(fmtScore).join(', ')}`);
+    } else {
+      title.textContent = `Next level ${p.i + 1}`;
+      lines.push(`Strength ${fmtStrength(p.s)}`);
+    }
+    tip.replaceChildren(title, ...lines.flatMap((line, j) => (j ? [el('br'), line] : [line])));
+    tip.hidden = false;
+    tip.style.left = `${clamp(xs(p.s), 90, W - 90)}px`;
+    tip.style.top = `${ys(p.y)}px`;
+  };
+  const hide = () => { tip.hidden = true; };
+  for (const p of all) {
+    const hit = svgEl('circle', { cx: xs(p.s), cy: ys(p.y), r: 12, class: 'hit', tabindex: 0 });
+    hit.addEventListener('pointerenter', () => show(p));
+    hit.addEventListener('pointerleave', hide);
+    hit.addEventListener('focus', () => show(p));
+    hit.addEventListener('blur', hide);
+    root.append(hit);
+  }
+
+  wrap.append(root, tip);
+}
+
+function renderHistory() {
+  const table = $('#history');
+  table.replaceChildren(el('caption', { style: 'caption-side: bottom; text-align: left; padding-top: 8px; font-size: 0.8rem; color: var(--text-2);' },
+    'Each cell shows glare strength → your median score for that level.'));
+  const head = el('tr', {}, el('th', { scope: 'col' }, 'Round'));
+  for (let i = 0; i < LEVELS; i++) head.append(el('th', { scope: 'col' }, `Level ${i + 1}`));
+  table.append(el('thead', {}, head));
+
+  const body = el('tbody');
+  for (const r of state.rounds) {
+    const row = el('tr', {}, el('td', {}, String(r.round)));
+    r.strengths.forEach((s, i) => {
+      row.append(el('td', {}, el('span', { class: 's' }, `${fmtStrength(s)} → `), fmtScore(r.medians[i])));
+    });
+    body.append(row);
+  }
+  const last = el('tr', { class: 'next-row' }, el('td', {}, state.calibrated ? 'Final strengths' : 'Next strengths'));
+  state.strengths.forEach((s) => last.append(el('td', {}, fmtStrength(s))));
+  body.append(last);
+  table.append(body);
+}
+
+// ---------- Export ----------
+
+function exportJson() {
+  const knots = state.rounds.length ? fitCurve(fitPoints()) : [];
+  const payload = {
+    tool: 'glare-calibration',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    scale: '1 = mildest glare, 5 = worst glare',
+    calibrated: state.calibrated,
+    strengths: state.strengths,
+    glareModel: { ...GLARE_MODEL, renderMaxSide: MAX_SIDE },
+    fittedCurve: knots.map((k) => ({ strength: Number(Math.exp(k.u).toPrecision(4)), score: round(k.y, 3) })),
+    sets: sets.map((s) => ({
+      key: s.key, name: s.name, width: s.w, height: s.h, seed: s.seed, shape: s.shape, center: s.center,
+    })),
+    rounds: state.rounds,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: `glare-calibration-${payload.exportedAt.slice(0, 10)}.json` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// ---------- Lightbox ----------
+
+const lb = { set: 0, frame: 1, lastFocus: null };
+
+function openLightbox(setIndex, frame) {
+  lb.set = setIndex;
+  lb.frame = frame;
+  lb.lastFocus = document.activeElement;
+  $('#lightbox').hidden = false;
+  drawLightbox();
+  (lb.frame > 0 ? $('#lb-score') : $('#lb-close')).focus();
+}
+
+function closeLightbox() {
+  $('#lightbox').hidden = true;
+  if (lb.lastFocus) lb.lastFocus.focus();
+}
+
+function drawLightbox() {
+  const set = sets[lb.set];
+  const src = set.canvases[lb.frame];
+  const canvas = $('#lb-canvas');
+  canvas.width = src.width;
+  canvas.height = src.height;
+  canvas.getContext('2d').drawImage(src, 0, 0);
+  $('#lb-caption').textContent = `Set ${lb.set + 1} · ${lb.frame === 0 ? 'Original' : `Image ${lb.frame} of ${LEVELS}`}`;
+  const score = $('#lb-score');
+  score.hidden = lb.frame === 0;
+  if (lb.frame > 0) score.value = set.inputs[lb.frame - 1].value;
+}
+
+function stepLightbox(delta) {
+  lb.frame = (lb.frame + delta + LEVELS + 1) % (LEVELS + 1);
+  drawLightbox();
+}
+
+// ---------- Upload and wiring ----------
+
+async function handleFiles(fileList) {
+  const files = [...fileList].filter((f) => f.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name));
+  const errorBox = $('#upload-error');
+  errorBox.hidden = true;
+  if (!files.length) {
+    errorBox.textContent = 'No images found in that selection.';
+    errorBox.hidden = false;
+    return;
+  }
+  const chosen = files.slice(0, MAX_SETS);
+  const loaded = [];
+  const failed = [];
+  for (const file of chosen) {
+    try {
+      loaded.push(await makeSet(file));
+    } catch {
+      failed.push(file.name);
+    }
+  }
+  if (!loaded.length) {
+    errorBox.textContent = `Couldn't read ${failed.join(', ')}. Try PNG or JPEG (HEIC isn't supported by most browsers).`;
+    errorBox.hidden = false;
+    return;
+  }
+
+  sets = loaded;
+  buildSets();
+  $('#upload').hidden = true;
+  $('#workspace').hidden = false;
+  renderStatus();
+  updateCount();
+  const notes = [];
+  if (files.length > MAX_SETS) notes.push(`Only the first ${MAX_SETS} images are used.`);
+  if (failed.length) notes.push(`Couldn't read ${failed.join(', ')}.`);
+  $('#status').textContent = notes.join(' ');
+  await renderAllSets();
+  renderResults();
+}
+
+function resetAll() {
+  if (!confirm('Clear all rounds and start over with uncalibrated glare?')) return;
+  state = freshState();
+  saveState();
+  for (const set of sets) {
+    set.center = set.defaultCenter.slice();
+    set.field = null;
+    set.inputs.forEach((inp) => { inp.value = ''; });
+  }
+  renderStatus();
+  $('#status').textContent = 'Started over.';
+  updateCount();
+  renderAllSets();
+  renderResults();
+}
+
+function init() {
+  const fileInput = $('#file');
+  $('#choose').addEventListener('click', () => fileInput.click());
+  $('#change-images').addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) handleFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  const drop = $('#upload');
+  drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragging'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragging'));
+  drop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    drop.classList.remove('dragging');
+    if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+  });
+
+  $('#submit').addEventListener('click', submitRound);
+  $('#reset').addEventListener('click', resetAll);
+  $('#export').addEventListener('click', exportJson);
+
+  $('#lb-close').addEventListener('click', closeLightbox);
+  $('#lb-prev').addEventListener('click', () => stepLightbox(-1));
+  $('#lb-next').addEventListener('click', () => stepLightbox(1));
+  $('#lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') closeLightbox(); });
+  $('#lb-score').addEventListener('input', () => {
+    if (lb.frame === 0) return;
+    const input = sets[lb.set].inputs[lb.frame - 1];
+    input.value = $('#lb-score').value;
+    input.classList.remove('invalid');
+    updateCount();
+  });
+  $('#lb-score').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      stepLightbox(1);
+      if (lb.frame === 0) stepLightbox(1);
+      $('#lb-score').focus();
+      $('#lb-score').select();
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if ($('#lightbox').hidden) return;
+    if (e.key === 'Escape') closeLightbox();
+    else if (e.target.id !== 'lb-score' && e.key === 'ArrowLeft') stepLightbox(-1);
+    else if (e.target.id !== 'lb-score' && e.key === 'ArrowRight') stepLightbox(1);
+  });
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { if (!$('#results').hidden) renderChart(); }, 150);
+  });
+
+  if (state.rounds.length) {
+    const resume = $('#resume');
+    resume.textContent = `You're on round ${state.rounds.length + 1}. Upload the same images to continue; each image's glare placement is tied to its file name.`;
+    resume.hidden = false;
+  }
+  renderResults();
+}
+
+init();
+</script>
+</body>
+</html>
