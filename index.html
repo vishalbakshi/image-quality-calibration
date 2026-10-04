@@ -312,8 +312,8 @@
 
     <div class="card instructions">
       <strong id="instructions-title">The glare in these images isn't calibrated yet.</strong>
-      <p>Score each image's glare from 1 (mildest) to 5 (worst), using whatever 1–5 means to you. Decimals are fine. After you submit, the glare is adjusted and you score again. You're done when your scores come out 1, 2, 3, 4, 5.</p>
-      <p class="hint">The ends can move too. If the faintest image doesn't deserve a 1, or the strongest doesn't deserve a 5, score them lower or higher than that.</p>
+      <p>Score each image's glare from 1 (mildest) to 5 (worst), using whatever 1–5 means to you. Decimals are fine. After you submit, the middle three images are adjusted and you score again. You're done when your scores come out 1, 2, 3, 4, 5.</p>
+      <p class="hint">The faintest and strongest images stay fixed. Only how your scores compare matters: if the middle ones feel bunched toward one end, score them that way, and use any numbers you like (1, 2, 3, 6, 10 is fine).</p>
     </div>
 
     <div class="toolbar">
@@ -639,9 +639,19 @@ async function renderAllSets() {
 function fitPoints() {
   const points = [];
   for (const r of state.rounds) {
-    r.strengths.forEach((s, i) => points.push({ s, y: r.medians[i], w: r.sets.length }));
+    const ys = relativeScores(r.medians);
+    r.strengths.forEach((s, i) => points.push({ s, y: ys[i], w: r.sets.length }));
   }
   return points;
+}
+
+// The weakest and strongest levels are fixed, so scores only matter relative to each other:
+// rescale a round's scores so its weakest level reads 1 and its strongest reads 5.
+function relativeScores(medians) {
+  const lo = medians[0];
+  const hi = medians[LEVELS - 1];
+  if (!(hi > lo)) return medians.slice();
+  return medians.map((m) => TARGETS[0] + ((m - lo) / (hi - lo)) * (TARGETS[LEVELS - 1] - TARGETS[0]));
 }
 
 // Weighted pool-adjacent-violators: the closest non-decreasing fit.
@@ -726,7 +736,17 @@ function enforceOrder(strengths) {
 function nextStrengths() {
   const knots = fitCurve(fitPoints());
   const step = extrapolationStep(knots);
-  return enforceOrder(TARGETS.map((t) => strengthFor(t, knots, step)));
+  const lo = state.strengths[0];
+  const hi = state.strengths[LEVELS - 1];
+  // Ends stay put; only the middle levels move, kept strictly between the ends.
+  const next = TARGETS.map((t, i) => {
+    if (i === 0) return lo;
+    if (i === LEVELS - 1) return hi;
+    const gap = Math.pow(hi / lo, 1 / (4 * LEVELS));
+    return clamp(strengthFor(t, knots, step), lo * gap, hi / gap);
+  });
+  for (let i = 2; i < LEVELS - 1; i++) next[i] = Math.max(next[i], next[i - 1] * 1.01);
+  return next.map((v) => Number(v.toPrecision(4)));
 }
 
 // The curve as (strength, score) vertices, for drawing and export.
@@ -910,7 +930,7 @@ function submitRound() {
     })),
   });
 
-  const worstGap = Math.max(...medians.map((m, i) => Math.abs(m - TARGETS[i])));
+  const worstGap = Math.max(...relativeScores(medians).map((m, i) => Math.abs(m - TARGETS[i])));
   state.calibrated = worstGap <= DONE_TOLERANCE;
   if (!state.calibrated) state.strengths = nextStrengths();
   saveState();
