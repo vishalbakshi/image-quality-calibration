@@ -193,6 +193,10 @@
     color: var(--text);
   }
   .score.invalid { border-color: var(--danger); }
+  .prev { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  .prev-label { font-size: 0.8rem; color: var(--text-3); margin-bottom: 6px; }
+  .prev .tile canvas { cursor: default; opacity: 0.9; }
+  .prev-score { text-align: center; font-size: 0.9rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
   .actions {
     position: sticky;
@@ -295,7 +299,7 @@
   <section id="upload" class="dropzone" aria-label="Upload images">
     <button class="primary" id="choose" type="button">Choose images</button>
     <input id="file" type="file" accept="image/*" multiple hidden>
-    <p class="muted">or drop them here. Five images works well. Each one becomes a set of five glare levels.</p>
+    <p class="muted">or drop them here. Up to five images; each one becomes a set of five glare levels.</p>
     <p class="resume" id="resume" hidden></p>
     <p class="error" id="upload-error" role="alert" hidden></p>
   </section>
@@ -376,7 +380,7 @@ const LEVELS = 5;
 const TARGETS = [1, 2, 3, 4, 5];
 const INITIAL_STRENGTHS = [0.2, 0.4, 0.6, 0.8, 1.0];
 const MAX_SIDE = 768;           // images are downscaled so the longest side is at most this
-const MAX_SETS = 25;
+const MAX_SETS = 5;
 const DONE_TOLERANCE = 0.25;    // every level's median within this of its target
 const MIN_STEP_RATIO = 1.2;     // each level at least 20% stronger than the one before
 const S_MIN = 0.001;
@@ -558,6 +562,7 @@ async function makeSet(file) {
     h: original.height,
     field: null,
     canvases: [],
+    prev: null,
     inputs: [],
     marker: null,
   };
@@ -618,6 +623,7 @@ function renderSet(set) {
   for (let i = 0; i < LEVELS; i++) renderLevel(set, state.strengths[i], set.canvases[i + 1]);
   set.marker.style.left = `${set.center[0] * 100}%`;
   set.marker.style.top = `${set.center[1] * 100}%`;
+  renderPrevious(set);
 }
 
 async function renderAllSets() {
@@ -795,9 +801,47 @@ function buildSets() {
         el('div', { class: 'set-head' },
           el('h3', {}, `Set ${si + 1}`),
           el('span', { class: 'set-name', title: set.name }, set.name)),
-        tiles),
+        tiles,
+        buildPrevious(set)),
     );
   });
+}
+
+// Last round's images and scores for this set, shown under the current row for reference.
+function buildPrevious(set) {
+  const tiles = el('div', { class: 'tiles' }, el('div'));
+  const canvases = [];
+  const scores = [];
+  for (let i = 0; i < LEVELS; i++) {
+    const canvas = el('canvas');
+    const score = el('div', { class: 'prev-score' });
+    canvases.push(canvas);
+    scores.push(score);
+    tiles.append(el('figure', { class: 'tile' }, el('div', { class: 'canvas-wrap' }, canvas), score));
+  }
+  const label = el('div', { class: 'prev-label' });
+  const wrap = el('div', { class: 'prev' }, label, tiles);
+  wrap.hidden = true;
+  set.prev = { wrap, label, canvases, scores };
+  return wrap;
+}
+
+function renderPrevious(set) {
+  if (!set.prev) return;
+  const last = state.rounds[state.rounds.length - 1];
+  const entry = last && last.sets.find((x) => x.key === set.key);
+  set.prev.wrap.hidden = !entry;
+  if (!entry) return;
+  set.prev.label.textContent = `Round ${last.round}: your scores`;
+  // Re-render with that round's glare placement, then restore the current one.
+  const center = set.center;
+  const moved = entry.center[0] !== center[0] || entry.center[1] !== center[1];
+  if (moved) { set.center = entry.center; set.field = computeField(set); }
+  last.strengths.forEach((s, i) => {
+    renderLevel(set, s, set.prev.canvases[i]);
+    set.prev.scores[i].textContent = fmtScore(entry.scores[i]);
+  });
+  if (moved) { set.center = center; set.field = computeField(set); }
 }
 
 function allInputs() {
